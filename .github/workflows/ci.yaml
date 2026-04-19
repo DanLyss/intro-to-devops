@@ -96,3 +96,10 @@ jobs:
           docker push ${{ env.IMAGE_NAME }}:${{ steps.version.outputs.semver }}
           docker push ${{ env.IMAGE_NAME }}:${{ github.sha }}
           docker push ${{ env.IMAGE_NAME }}:latest
+
+      - name: Generate SBOM
+        uses: anchore/sbom-action@v0
+        with:
+          image: ${{ env.IMAGE_NAME }}:${{ steps.version.outputs.semver }}
+          artifact-name: sbom-${{ steps.version.outputs.semver }}.spdx.json
+          output-file: sbom.spdx.json
