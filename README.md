@@ -7,3 +7,4 @@ Starter repository for the Intro to DevOps course homework. You will extend this
 ## Git branching strategy
 
 This project uses **GitHub Flow**: all work happens in short-lived feature branches, which are merged into `main` via pull requests after unit tests pass.
+
