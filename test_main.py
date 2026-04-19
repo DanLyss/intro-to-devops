@@ -34,3 +34,39 @@ def test_get_cheapest_fruit():
     assert response.status_code == 200
     assert response.json() == {"id": 2, "name": "Banana", "price": 0.80, "in_season": True}
 
+def test_list_fruits_in_season_true():
+    response = client.get("/fruits?in_season=true")
+    assert response.status_code == 200
+    fruits = response.json()
+    assert all(f["in_season"] is True for f in fruits)
+    assert len(fruits) == 2
+
+def test_list_fruits_in_season_false():
+    response = client.get("/fruits?in_season=false")
+    assert response.status_code == 200
+    fruits = response.json()
+    assert all(f["in_season"] is False for f in fruits)
+    assert len(fruits) == 1
+
+def test_get_fruit_not_found():
+    response = client.get("/fruits/9999")
+    assert response.status_code == 404
+
+def test_post_fruit_invalid_body():
+    response = client.post("/fruits", json={"price": "not-a-number"})
+    assert response.status_code == 422
+
+def test_put_fruit_not_found():
+    response = client.put("/fruits/9999", json={"price": 1.0})
+    assert response.status_code == 404
+
+def test_delete_fruit_not_found():
+    response = client.delete("/fruits/9999")
+    assert response.status_code == 404
+
+def test_cheapest_fruit_no_fruits():
+    import main
+    main.FRUITS.clear()
+    response = client.get("/fruits/cheapest")
+    assert response.status_code == 404
+
