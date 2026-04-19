@@ -50,3 +50,11 @@ def test_cheapest_fruit(client):
 
     assert cheapest["price"] == min_price
 
+def test_created_fruit_appears_in_list(client):
+    response = client.post("/fruits", json={"name": "Kiwi", "price": 2.0, "in_season": True})
+    assert response.status_code == 200
+    created_id = response.json()["id"]
+
+    all_fruits = client.get("/fruits")
+    assert any(f["id"] == created_id for f in all_fruits.json())
+
