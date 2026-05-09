@@ -1,13 +1,33 @@
-"""
-Fruits API — complete version (after Module 1 homework).
-Same as live_demo plus: GET /fruits/cheapest, GET /fruits?in_season=, PUT, DELETE, POST with JSON body.
-"""
 from __future__ import annotations
+import os
 
-from fastapi import FastAPI, HTTPException, Query
+from fastapi import FastAPI, HTTPException, Query, Depends
 from pydantic import BaseModel
+from sqlalchemy import create_engine, Column, Integer, String, Float, Boolean
+from sqlalchemy.orm import declarative_base, sessionmaker, Session
 
-app = FastAPI(title="Fruits API (complete)", version="0.2.0")
+DATABASE_URL = os.getenv(
+    "DATABASE_URL",
+    "sqlite:///./fruits.db"
+)
+
+connect_args = {"check_same_thread": False} if DATABASE_URL.startswith("sqlite") else {}
+engine = create_engine(DATABASE_URL, connect_args=connect_args)
+SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
+Base = declarative_base()
+
+
+class FruitModel(Base):
+    __tablename__ = "fruits"
+    id       = Column(Integer, primary_key=True, index=True)
+    name     = Column(String(100), nullable=False)
+    price    = Column(Float, default=0.0)
+    in_season = Column(Boolean, default=True)
+
+
+Base.metadata.create_all(bind=engine)
+
+app = FastAPI(title="Fruits API", version="0.3.0")
 
 
 class FruitCreate(BaseModel):
@@ -17,90 +37,84 @@ class FruitCreate(BaseModel):
 
 
 class FruitUpdate(BaseModel):
-    name: str  = None
-    price: float  = None
-    in_season: bool  = None
+    name: str | None = None
+    price: float | None = None
+    in_season: bool | None = None
 
 
-# In-memory store: id -> {name, price, in_season}
-FRUITS = {
-    1: {"name": "Apple", "price": 1.20, "in_season": True},
-    2: {"name": "Banana", "price": 0.80, "in_season": True},
-    3: {"name": "Orange", "price": 1.00, "in_season": False},
-}
-_next_id = 4
+def get_db():
+    db = SessionLocal()
+    try:
+        yield db
+    finally:
+        db.close()
 
 
-def _fruit_response(fruit_id: int, data: dict) -> dict:
-    return {"id": fruit_id, **data}
+def _fruit_response(fruit: FruitModel) -> dict:
+    return {"id": fruit.id, "name": fruit.name, "price": fruit.price, "in_season": fruit.in_season}
 
 
 @app.get("/health")
 def health():
-    """Health check for load balancers / ECS."""
     return {"status": "ok"}
 
 
 @app.get("/fruits/cheapest")
-def get_cheapest_fruit():
-    """Return the fruit with the lowest price. (Homework endpoint.)"""
-    if not FRUITS:
+def get_cheapest_fruit(db: Session = Depends(get_db)):
+    fruit = db.query(FruitModel).order_by(FruitModel.price).first()
+    if not fruit:
         raise HTTPException(status_code=404, detail="No fruits")
-    cheapest_id = min(FRUITS.keys(), key=lambda i: FRUITS[i]["price"])
-    return _fruit_response(cheapest_id, FRUITS[cheapest_id])
-
-
+    return _fruit_response(fruit)
 
 
 @app.get("/fruits")
 def list_fruits(
-        in_season: bool = Query(None, description="Filter by in_season (true/false)"),
+    in_season: bool = Query(None),
+    db: Session = Depends(get_db),
 ):
-    """List all fruits. Optional filter: ?in_season=true or ?in_season=false."""
-    items = [{"id": id_, **data} for id_, data in FRUITS.items()]
+    q = db.query(FruitModel)
     if in_season is not None:
-        items = [f for f in items if f["in_season"] is in_season]
-    return items
+        q = q.filter(FruitModel.in_season == in_season)
+    return [_fruit_response(f) for f in q.all()]
 
 
-@app.get("/fruits/{fruit_id:int}")
-def get_fruit(fruit_id: int):
-    """Get one fruit by id."""
-    if fruit_id not in FRUITS:
+@app.get("/fruits/{fruit_id}")
+def get_fruit(fruit_id: int, db: Session = Depends(get_db)):
+    fruit = db.query(FruitModel).filter(FruitModel.id == fruit_id).first()
+    if not fruit:
         raise HTTPException(status_code=404, detail="Fruit not found")
-    return _fruit_response(fruit_id, FRUITS[fruit_id])
+    return _fruit_response(fruit)
 
 
 @app.post("/fruits")
-def add_fruit(body: FruitCreate):
-    """Add a new fruit (JSON body)."""
-    global _next_id
-    fruit_id = _next_id
-    _next_id += 1
-    data = {"name": body.name, "price": body.price, "in_season": body.in_season}
-    FRUITS[fruit_id] = data
-    return _fruit_response(fruit_id, data)
+def add_fruit(body: FruitCreate, db: Session = Depends(get_db)):
+    fruit = FruitModel(name=body.name, price=body.price, in_season=body.in_season)
+    db.add(fruit)
+    db.commit()
+    db.refresh(fruit)
+    return _fruit_response(fruit)
 
 
-@app.put("/fruits/{fruit_id:int}")
-def update_fruit(fruit_id: int, body: FruitUpdate):
-    """Update a fruit (partial update)."""
-    if fruit_id not in FRUITS:
+@app.put("/fruits/{fruit_id}")
+def update_fruit(fruit_id: int, body: FruitUpdate, db: Session = Depends(get_db)):
+    fruit = db.query(FruitModel).filter(FruitModel.id == fruit_id).first()
+    if not fruit:
         raise HTTPException(status_code=404, detail="Fruit not found")
-    data = FRUITS[fruit_id].copy()
     if body.name is not None:
-        data["name"] = body.name
+        fruit.name = body.name
     if body.price is not None:
-        data["price"] = body.price
+        fruit.price = body.price
     if body.in_season is not None:
-        data["in_season"] = body.in_season
-    FRUITS[fruit_id] = data
-    return _fruit_response(fruit_id, data)
+        fruit.in_season = body.in_season
+    db.commit()
+    db.refresh(fruit)
+    return _fruit_response(fruit)
 
 
-@app.delete("/fruits/{fruit_id:int}", status_code=204)
-def delete_fruit(fruit_id: int):
-    """Delete a fruit."""
-    if fruit_id not in FRUITS:
+@app.delete("/fruits/{fruit_id}", status_code=204)
+def delete_fruit(fruit_id: int, db: Session = Depends(get_db)):
+    fruit = db.query(FruitModel).filter(FruitModel.id == fruit_id).first()
+    if not fruit:
         raise HTTPException(status_code=404, detail="Fruit not found")
-    del FRUITS[fruit_id]
+    db.delete(fruit)
+    db.commit()
