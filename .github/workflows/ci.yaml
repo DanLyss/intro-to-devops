@@ -108,7 +108,6 @@ jobs:
     name: Deploy to ECS
     needs: release
     runs-on: ubuntu-latest
-    if: ${{ secrets.AWS_ACCESS_KEY_ID != '' }}
     steps:
       - uses: actions/checkout@v4
 
