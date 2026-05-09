@@ -73,4 +73,12 @@ resource "aws_ecs_service" "fruits" {
     security_groups  = [aws_security_group.api.id]
     assign_public_ip = true
   }
+
+  load_balancer {
+    target_group_arn = aws_lb_target_group.fruits.arn
+    container_name   = "fruits-api"
+    container_port   = 8000
+  }
+
+  depends_on = [aws_lb_listener.http]
 }
