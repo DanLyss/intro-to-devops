@@ -40,6 +40,9 @@ def test_full_crud_lifecycle(client):
     assert response.status_code == 404
 
 def test_cheapest_fruit(client):
+    client.post("/fruits", json={"name": "Expensive", "price": 9.99, "in_season": True})
+    client.post("/fruits", json={"name": "Cheap", "price": 0.50, "in_season": True})
+
     response = client.get("/fruits/cheapest")
     assert response.status_code == 200
     cheapest = response.json()
