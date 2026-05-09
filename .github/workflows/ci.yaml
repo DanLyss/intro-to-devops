@@ -22,7 +22,7 @@ jobs:
         run: pip install -r requirements.txt pytest-cov
 
       - name: Run unit tests
-        run: python -m pytest test_main.py -v --cov=main.py --cov-report=term-missing
+        run: python -m pytest test_main.py -v --cov=main --cov-report=term-missing
 
   integration-test:
     name: Integration tests
@@ -103,3 +103,33 @@ jobs:
           image: ${{ env.IMAGE_NAME }}:${{ steps.version.outputs.semver }}
           artifact-name: sbom-${{ steps.version.outputs.semver }}.spdx.json
           output-file: sbom.spdx.json
+
+  deploy:
+    name: Deploy to ECS
+    needs: release
+    runs-on: ubuntu-latest
+    if: ${{ secrets.AWS_ACCESS_KEY_ID != '' }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: eu-central-1
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+
+      - name: Terraform Init
+        working-directory: terraform
+        run: terraform init
+
+      - name: Terraform Apply
+        working-directory: terraform
+        run: terraform apply -auto-approve
+        env:
+          TF_VAR_db_username: ${{ secrets.DB_USERNAME }}
+          TF_VAR_db_password: ${{ secrets.DB_PASSWORD }}
+          TF_VAR_image_url: ghcr.io/${{ github.repository }}:${{ github.sha }}
