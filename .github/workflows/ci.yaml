@@ -144,6 +144,15 @@ jobs:
         working-directory: terraform
         run: terraform init
 
+      - name: Import existing log group if exists
+        working-directory: terraform
+        continue-on-error: true
+        run: terraform import aws_cloudwatch_log_group.fruits /ecs/fruits-api
+        env:
+          TF_VAR_db_username: ${{ secrets.DB_USERNAME }}
+          TF_VAR_db_password: ${{ secrets.DB_PASSWORD }}
+          TF_VAR_image_url: ghcr.io/${{ github.repository }}:${{ github.sha }}
+
       - name: Terraform Apply
         working-directory: terraform
         run: terraform apply -auto-approve
