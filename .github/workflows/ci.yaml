@@ -121,6 +121,25 @@ jobs:
       - name: Setup Terraform
         uses: hashicorp/setup-terraform@v3
 
+      - name: Cleanup orphan AWS resources
+        continue-on-error: true
+        run: |
+          # Delete ALB
+          ALB_ARN=$(aws elbv2 describe-load-balancers --names fruits-alb --query 'LoadBalancers[0].LoadBalancerArn' --output text 2>/dev/null || true)
+          [ "$ALB_ARN" != "None" ] && [ -n "$ALB_ARN" ] && aws elbv2 delete-load-balancer --load-balancer-arn $ALB_ARN && sleep 10 || true
+
+          # Delete Target Group
+          TG_ARN=$(aws elbv2 describe-target-groups --names fruits-tg --query 'TargetGroups[0].TargetGroupArn' --output text 2>/dev/null || true)
+          [ "$TG_ARN" != "None" ] && [ -n "$TG_ARN" ] && aws elbv2 delete-target-group --target-group-arn $TG_ARN || true
+
+          # Delete IAM Role
+          aws iam detach-role-policy --role-name ecsTaskExecutionRole --policy-arn arn:aws:iam::aws:policy/service-role/AmazonECSTaskExecutionRolePolicy 2>/dev/null || true
+          aws iam delete-role --role-name ecsTaskExecutionRole 2>/dev/null || true
+
+          # Delete RDS
+          aws rds delete-db-instance --db-instance-identifier fruits-db --skip-final-snapshot 2>/dev/null || true
+          aws rds wait db-instance-deleted --db-instance-identifier fruits-db 2>/dev/null || true
+
       - name: Terraform Init
         working-directory: terraform
         run: terraform init
