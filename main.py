@@ -30,6 +30,19 @@ Base.metadata.create_all(bind=engine)
 app = FastAPI(title="Fruits API", version="0.3.0")
 
 
+@app.on_event("startup")
+def seed():
+    db = SessionLocal()
+    if db.query(FruitModel).count() == 0:
+        db.add_all([
+            FruitModel(name="Apple",  price=1.20, in_season=True),
+            FruitModel(name="Banana", price=0.80, in_season=True),
+            FruitModel(name="Orange", price=1.00, in_season=False),
+        ])
+        db.commit()
+    db.close()
+
+
 class FruitCreate(BaseModel):
     name: str
     price: float = 0.0
